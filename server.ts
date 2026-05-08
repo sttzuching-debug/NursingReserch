@@ -7,15 +7,16 @@ import cors from "cors";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export const app = express();
+
 async function startServer() {
-  const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   app.use(cors());
   app.use(express.json());
 
   // Proxy to PubMed API
-  // Note: PubMed E-utilities have rate limits. For heavy use, an API Key is recommended.
+  // ... (API routes same as before) ...
   app.get("/api/search", async (req, res) => {
     try {
       const { q, retmax = 10 } = req.query;
@@ -60,8 +61,6 @@ async function startServer() {
   app.get("/api/details/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      // efetch returns XML which is hard to parse without extra libs, 
-      // but maybe we can just use the web-search tool's capability or simple regex for abstract
       const detailUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${id}&retmode=text&rettype=abstract`;
       const detailRes = await fetch(detailUrl);
       const abstract = await detailRes.text();
@@ -87,9 +86,14 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  // Only listen if not on Vercel (where it's treated as a serverless function)
+  if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 
 startServer();
+
+export default app;
