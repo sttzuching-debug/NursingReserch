@@ -1,0 +1,6 @@
+{
+  "name": "實證護理文獻查證助手 (EBP Assistant)",
+  "description": "專業的實證醫學文獻查證工具，支援 PICO 模型建立、關鍵字自動擴充（MeSH Term）、布林邏輯推導，並整合 PubMed 等權威資料庫與 AI 自動摘要、DOI 真实性驗證功能。",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
