@@ -38,7 +38,8 @@ app.get("/api/search", async (req, res) => {
         source: item.source,
         pubdate: item.pubdate,
         doi,
-        url: doi ? `https://doi.org/${doi}` : `https://pubmed.ncbi.nlm.nih.gov/${id}/`
+        url: doi ? `https://doi.org/${doi}` : `https://pubmed.ncbi.nlm.nih.gov/${id}/`,
+        database: "PubMed"
       };
     });
 

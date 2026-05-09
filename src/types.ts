@@ -22,6 +22,8 @@ export interface SearchResult {
   abstract?: string;
   aiSummary?: string;
   isVerified?: boolean;
+  evidenceLevel?: string;
+  database?: "PubMed" | "Cochrane" | "CINAHL";
 }
 
 export interface SearchFilters {

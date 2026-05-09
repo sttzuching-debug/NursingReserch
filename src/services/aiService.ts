@@ -150,3 +150,22 @@ export async function verifyArticle(title: string, doi: string): Promise<boolean
 
   return response.text === "true";
 }
+
+export async function estimateEvidenceLevel(title: string, abstract: string): Promise<string> {
+  const prompt = `
+    Analyze the following research paper and estimate its Level of Evidence based on Oxford Centre for Evidence-Based Medicine (OCEBM) criteria.
+    Provide ONLY the level code and a brief descriptor (e.g., "Level 1: Systematic Review", "Level 2: RCT", "Level 3: Cohort Study", "Level 4: Case-control", "Level 5: Expert Opinion").
+    
+    Title: ${title}
+    Abstract: ${abstract}
+    
+    Return a single string.
+  `;
+
+  const response = await ai.models.generateContent({
+    model: FLASH_MODEL,
+    contents: prompt,
+  });
+
+  return response.text.trim();
+}

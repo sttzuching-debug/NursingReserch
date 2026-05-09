@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { PICOData, SearchResult, SearchFilters, KeywordSuggestion } from "./types";
-import { expandKeywords, summarizeArticle, verifyArticle, generatePICOFromScenario } from "./services/aiService";
+import { expandKeywords, summarizeArticle, verifyArticle, generatePICOFromScenario, estimateEvidenceLevel } from "./services/aiService";
 
 // Helper for Boolean Search Logic
 const buildSearchQuery = (suggestions: KeywordSuggestion[], filters: SearchFilters) => {
@@ -78,15 +78,40 @@ export default function App() {
   };
 
   const handleSummarize = async (item: SearchResult) => {
-    if (item.aiSummary) return; // Already summarized
+    if (item.aiSummary) {
+      setSelectedResult(item);
+      return;
+    }
+
     setLoading(true);
+    setSelectedResult(item);
+
     try {
-      const detailRes = await fetch(`/api/details/${item.id}`);
-      const detailData = await detailRes.json();
-      const summary = await summarizeArticle(item.title, detailData.abstract);
+      // Step 1: Fetch Abstract if missing
+      let fullAbstract = item.abstract;
+      if (!fullAbstract || fullAbstract === "正在載入完整摘要...") {
+        const detailRes = await fetch(`/api/details/${item.id}`);
+        const detailData = await detailRes.json();
+        fullAbstract = detailData.abstract;
+      }
+
+      // Step 2: Parallel Synthesis & Grading
+      const [summary, level] = await Promise.all([
+        summarizeArticle(item.title, fullAbstract || "No abstract available"),
+        estimateEvidenceLevel(item.title, fullAbstract || "No abstract available")
+      ]);
+
+      const updatedResult = { 
+        ...item, 
+        aiSummary: summary, 
+        abstract: fullAbstract,
+        evidenceLevel: level
+      };
       
-      setResults(prev => prev.map(r => r.id === item.id ? { ...r, aiSummary: summary, abstract: detailData.abstract } : r));
-      setSelectedResult(prev => prev?.id === item.id ? { ...prev, aiSummary: summary, abstract: detailData.abstract } : prev);
+      setResults(prev => prev.map(r => r.id === item.id ? updatedResult : r));
+      setSelectedResult(updatedResult);
+    } catch (error) {
+      console.error("Summarization error:", error);
     } finally {
       setLoading(false);
     }
@@ -549,15 +574,18 @@ ${item.abstract || "N/A"}
                             <span className="px-2 py-0.5 bg-nat-highlight text-[10px] font-extrabold text-nat-muted rounded uppercase tracking-widest border border-nat-border/50">
                               {item.id}
                             </span>
-                            {item.isVerified && (
-                              <span className="flex items-center gap-1 text-emerald-600 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 bg-emerald-50 rounded">
-                                <CheckCircle2 size={10} /> Verified
+                            <span className="px-2 py-0.5 bg-blue-50 text-[10px] font-bold text-blue-600 rounded uppercase border border-blue-100">
+                              {item.database || "PubMed"}
+                            </span>
+                            {item.evidenceLevel && (
+                              <span className="px-2 py-0.5 bg-purple-50 text-[10px] font-bold text-purple-600 rounded uppercase border border-purple-100">
+                                {item.evidenceLevel.split(':')[0]}
                               </span>
                             )}
                          </div>
                          <span className="text-[10px] text-nat-muted font-mono opacity-60">DOI: {item.doi || "N/A"}</span>
                       </div>
-                      <h3 className="text-md font-bold text-nat-text leading-snug group-hover:text-nat-primary transition-colors">{item.title}</h3>
+                      <h3 className="text-md font-bold text-nat-text leading-snug group-hover:text-nat-primary transition-colors line-clamp-2">{item.title}</h3>
                       <p className="text-[11px] text-nat-muted mt-3 line-clamp-1 italic">{item.authors}</p>
                       
                       <div className="mt-6 flex items-center justify-between pt-4 border-t border-nat-highlight">
@@ -636,28 +664,36 @@ ${item.abstract || "N/A"}
                                   disabled={loading || !!selectedResult.aiSummary}
                                   className={`flex-1 px-4 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
                                     selectedResult.aiSummary 
-                                    ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-default" 
+                                    ? "bg-slate-100 text-emerald-600 border border-emerald-100 cursor-default" 
                                     : "bg-nat-primary text-white hover:opacity-90 shadow-lg shadow-nat-primary/20"
                                   }`}
                                 >
                                   <Sparkles size={14} className={loading && !selectedResult.aiSummary ? "animate-spin" : ""} /> 
-                                  {loading && !selectedResult.aiSummary ? "專業摘要生成中..." : selectedResult.aiSummary ? "摘要已完成" : "生成臨床摘要"}
+                                  {loading && !selectedResult.aiSummary ? "深度分析中..." : selectedResult.aiSummary ? "分析已完成" : "生成臨床分析"}
                                 </button>
                               </div>
                             </div>
                           </header>
 
-                          {selectedResult.aiSummary && (
+                          {selectedResult.aiSummary ? (
                             <motion.div 
                               initial={{ opacity: 0, scale: 0.98 }}
                               animate={{ opacity: 1, scale: 1 }}
                               className="bg-nat-warm rounded-[2rem] p-6 border border-nat-border/50 mb-6 shadow-inner relative overflow-hidden"
                             >
                               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-nat-primary via-nat-accent to-nat-primary opacity-30" />
+                              
                               <div className="flex items-center justify-between mb-4">
-                                <h4 className="text-[11px] font-bold text-nat-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                                  <Layers size={14} /> 醫學證據摘錄
-                                </h4>
+                                <div className="flex flex-col gap-1">
+                                  <h4 className="text-[11px] font-bold text-nat-primary uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <Layers size={14} /> 醫學證據摘錄
+                                  </h4>
+                                  {selectedResult.evidenceLevel && (
+                                    <span className="text-[9px] font-bold text-nat-accent">
+                                      OCEBM 實證等級: {selectedResult.evidenceLevel}
+                                    </span>
+                                  )}
+                                </div>
                                 <button 
                                   onClick={() => copyForNotebookLM(selectedResult)}
                                   className="p-1.5 bg-white rounded-lg text-nat-accent hover:text-nat-primary transition-colors shadow-sm"
@@ -675,6 +711,23 @@ ${item.abstract || "N/A"}
                                 })}
                               </div>
                             </motion.div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center p-12 bg-nat-body/[0.02] border-2 border-dashed border-nat-border/50 rounded-3xl mb-6">
+                              <Sparkles size={32} className="text-nat-primary/30 mb-4" />
+                              <p className="text-xs text-nat-muted font-medium mb-6">尚未生成 AI 臨床摘要</p>
+                              <button 
+                                onClick={() => handleSummarize(selectedResult)}
+                                disabled={loading}
+                                className={`px-8 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 ${
+                                  loading 
+                                  ? "bg-nat-highlight text-nat-muted cursor-not-allowed" 
+                                  : "bg-nat-primary text-white hover:opacity-90 shadow-lg shadow-nat-primary/20"
+                                }`}
+                              >
+                                <Sparkles size={14} className={loading && !selectedResult.aiSummary ? "animate-spin" : ""} /> 
+                                {loading && !selectedResult.aiSummary ? "深度分析中..." : "啟動 AI 實證分析"}
+                              </button>
+                            </div>
                           )}
 
                           <div className="space-y-4 mb-6">
@@ -729,8 +782,25 @@ ${item.abstract || "N/A"}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-1.5 bg-nat-primary rounded-full animate-pulse" /> 
-                    Gemini 3.1 Pro 深度檢索模組
+                    Gemini 3.1 Pro / Flash-Lite 複合引擎
                   </div>
+                  {results.length > 0 && (
+                    <div className="flex items-center gap-4 border-l border-nat-border pl-8">
+                       <div className="flex flex-col">
+                          <div className="flex items-center justify-between gap-4 mb-1">
+                             <span className="text-[8px] uppercase tracking-tighter opacity-60">Synthesis Progress</span>
+                             <span className="text-[8px] font-mono">{Math.round((results.filter(r => r.aiSummary).length / results.length) * 100)}%</span>
+                          </div>
+                          <div className="w-32 h-1 bg-nat-border/30 rounded-full overflow-hidden">
+                             <motion.div 
+                               initial={{ width: 0 }}
+                               animate={{ width: `${(results.filter(r => r.aiSummary).length / results.length) * 100}%` }}
+                               className="h-full bg-nat-primary"
+                             />
+                          </div>
+                       </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-4 w-full lg:w-auto">
                   <button 
